@@ -140,6 +140,103 @@ class FakeExceptionLoggerTest {
     assertThat(exceptionLogStatus2).isTrue()
   }
 
+  @Test
+  fun testFakeExceptionLogger_setCustomKey_returnsValue() {
+    exceptionLogger.setCustomKey("current_screen", "HomeActivity")
+
+    val value = fakeExceptionLogger.getCustomKey("current_screen")
+
+    assertThat(value).isEqualTo("HomeActivity")
+  }
+
+  @Test
+  fun testFakeExceptionLogger_setCustomKey_overwriteKey_returnsLatestValue() {
+    exceptionLogger.setCustomKey("current_screen", "HomeActivity")
+    exceptionLogger.setCustomKey("current_screen", "ExplorationActivity")
+
+    val value = fakeExceptionLogger.getCustomKey("current_screen")
+
+    assertThat(value).isEqualTo("ExplorationActivity")
+  }
+
+  @Test
+  fun testFakeExceptionLogger_getCustomKey_notSet_returnsNull() {
+    val value = fakeExceptionLogger.getCustomKey("nonexistent_key")
+
+    assertThat(value).isNull()
+  }
+
+  @Test
+  fun testFakeExceptionLogger_setMultipleCustomKeys_returnsAllKeys() {
+    exceptionLogger.setCustomKey("current_screen", "HomeActivity")
+    exceptionLogger.setCustomKey("profile_id", "12345")
+
+    val allKeys = fakeExceptionLogger.getAllCustomKeys()
+
+    assertThat(allKeys).hasSize(2)
+    assertThat(allKeys["current_screen"]).isEqualTo("HomeActivity")
+    assertThat(allKeys["profile_id"]).isEqualTo("12345")
+  }
+
+  @Test
+  fun testFakeExceptionLogger_logMessage_returnsMessage() {
+    exceptionLogger.log("User navigated to Home screen")
+
+    val message = fakeExceptionLogger.getMostRecentLogMessage()
+
+    assertThat(message).isEqualTo("User navigated to Home screen")
+  }
+
+  @Test
+  fun testFakeExceptionLogger_logMultipleMessages_returnsAllMessages() {
+    exceptionLogger.log("User navigated to Home screen")
+    exceptionLogger.log("User tapped on topic")
+
+    val messages = fakeExceptionLogger.getLogMessages()
+
+    assertThat(messages).hasSize(2)
+    assertThat(messages[0]).isEqualTo("User navigated to Home screen")
+    assertThat(messages[1]).isEqualTo("User tapped on topic")
+  }
+
+  @Test
+  fun testFakeExceptionLogger_logMultipleMessages_getMostRecent_returnsLatest() {
+    exceptionLogger.log("First message")
+    exceptionLogger.log("Second message")
+
+    val message = fakeExceptionLogger.getMostRecentLogMessage()
+
+    assertThat(message).isEqualTo("Second message")
+  }
+
+  @Test
+  fun testFakeExceptionLogger_noLogMessages_returnsTrue() {
+    val isEmpty = fakeExceptionLogger.noLogMessagesPresent()
+
+    assertThat(isEmpty).isTrue()
+  }
+
+  @Test
+  fun testFakeExceptionLogger_logMessage_noLogMessages_returnsFalse() {
+    exceptionLogger.log("Test message")
+
+    val isEmpty = fakeExceptionLogger.noLogMessagesPresent()
+
+    assertThat(isEmpty).isFalse()
+  }
+
+  @Test
+  fun testFakeExceptionLogger_clearAll_clearsEverything() {
+    exceptionLogger.logException(exception1)
+    exceptionLogger.setCustomKey("key", "value")
+    exceptionLogger.log("Test message")
+    fakeExceptionLogger.clearAll()
+
+    assertThat(fakeExceptionLogger.noExceptionsPresent()).isTrue()
+    assertThat(fakeExceptionLogger.getCustomKey("key")).isNull()
+    assertThat(fakeExceptionLogger.noLogMessagesPresent()).isTrue()
+  }
+
   private fun setUpTestApplicationComponent() {
     DaggerFakeExceptionLoggerTest_TestApplicationComponent.builder()
       .setApplication(ApplicationProvider.getApplicationContext())

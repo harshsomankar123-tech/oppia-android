@@ -67,6 +67,9 @@ class ExceptionsController @Inject constructor(
     timestampInMillis: Long,
     exceptionType: ExceptionType
   ) {
+    exceptionLogger.log(
+      "Logging ${exceptionType.name} exception: ${exception.message ?: "unknown"}"
+    )
     when (networkConnectionUtil.getCurrentConnectionStatus()) {
       NetworkConnectionUtil.ProdConnectionStatus.NONE ->
         cacheExceptionLog(
