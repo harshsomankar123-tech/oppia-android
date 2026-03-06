@@ -5,6 +5,7 @@ import dagger.Module
 import dagger.multibindings.IntoMap
 import org.oppia.android.app.model.FeatureFlagId
 import org.oppia.android.util.platformparameter.EnableAppAndOsDeprecation
+import org.oppia.android.util.platformparameter.EnableBackgroundMediaPlayer
 import org.oppia.android.util.platformparameter.EnableDownloadsSupport
 import org.oppia.android.util.platformparameter.EnableEditAccountsOptionsUi
 import org.oppia.android.util.platformparameter.EnableFastLanguageSwitchingInLesson
@@ -143,5 +144,13 @@ interface FeatureFlagsMapBindingModule {
   @FeatureFlagIdKey(FeatureFlagId.TOPIC_PRACTICE_TAB)
   fun bindTopicPracticeTab(
     @EnableTopicPracticeTab param: PlatformParameterValue<Boolean>
+  ): PlatformParameterValue<Boolean>
+
+  @Binds
+  @IntoMap
+  @FeatureFlags
+  @FeatureFlagIdKey(FeatureFlagId.BACKGROUND_MEDIA_PLAYER)
+  fun bindBackgroundMediaPlayer(
+    @EnableBackgroundMediaPlayer param: PlatformParameterValue<Boolean>
   ): PlatformParameterValue<Boolean>
 }

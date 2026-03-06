@@ -4,6 +4,7 @@ import dagger.Module
 import dagger.Provides
 import org.oppia.android.app.model.FeatureFlagId
 import org.oppia.android.util.platformparameter.EnableAppAndOsDeprecation
+import org.oppia.android.util.platformparameter.EnableBackgroundMediaPlayer
 import org.oppia.android.util.platformparameter.EnableDownloadsSupport
 import org.oppia.android.util.platformparameter.EnableEditAccountsOptionsUi
 import org.oppia.android.util.platformparameter.EnableFastLanguageSwitchingInLesson
@@ -100,6 +101,11 @@ class FeatureFlagBindingModule {
   @EnableTopicPracticeTab
   fun provideEnableTopicPracticeTab(processState: PlatformParameterProcessState) =
     processState.retrieveFeatureFlag(FeatureFlagId.TOPIC_PRACTICE_TAB)
+
+  @Provides
+  @EnableBackgroundMediaPlayer
+  fun provideEnableBackgroundMediaPlayer(processState: PlatformParameterProcessState) =
+    processState.retrieveFeatureFlag(FeatureFlagId.BACKGROUND_MEDIA_PLAYER)
 
   private companion object {
     private fun PlatformParameterProcessState.retrieveFeatureFlag(

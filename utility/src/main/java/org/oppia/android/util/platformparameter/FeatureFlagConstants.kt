@@ -201,3 +201,16 @@ const val ENABLE_TOPIC_PRACTICE_TAB = "enable_topic_practice_tab"
 
 /** Default value for the feature flag corresponding to [EnableTopicPracticeTab]. */
 const val ENABLE_TOPIC_PRACTICE_TAB_DEFAULT_VALUE = false
+
+/**
+ * Qualifier for the feature flag that controls whether MediaPlayer interactions are moved to a
+ * background thread to avoid ANRs caused by blocking operations on the main thread.
+ */
+@Qualifier
+annotation class EnableBackgroundMediaPlayer
+
+/** Name of the feature flag that controls whether to enable background media player threading. */
+const val ENABLE_BACKGROUND_MEDIA_PLAYER = "android_enable_background_media_player"
+
+/** Default value for the feature flag corresponding to [EnableBackgroundMediaPlayer]. */
+const val ENABLE_BACKGROUND_MEDIA_PLAYER_DEFAULT_VALUE = false

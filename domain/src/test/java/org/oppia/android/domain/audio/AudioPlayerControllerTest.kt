@@ -191,6 +191,57 @@ class AudioPlayerControllerTest {
   }
 
   @Test
+  fun testController_withBackgroundMediaPlayer_play_checkIsPlaying() {
+    TestPlatformParameterModule.forceEnableBackgroundMediaPlayer(true)
+    setUpMediaReadyApplication()
+    arrangeMediaPlayer()
+
+    audioPlayerController.play(isPlayingFromAutoPlay = false, reloadingMainContent = false)
+    testCoroutineDispatchers.runCurrent()
+
+    assertThat(shadowMediaPlayer.isReallyPlaying).isTrue()
+  }
+
+  @Test
+  fun testController_withBackgroundMediaPlayer_pause_checkNotIsPlaying() {
+    TestPlatformParameterModule.forceEnableBackgroundMediaPlayer(true)
+    setUpMediaReadyApplication()
+    arrangeMediaPlayer()
+
+    audioPlayerController.play(isPlayingFromAutoPlay = false, reloadingMainContent = false)
+    testCoroutineDispatchers.runCurrent()
+
+    audioPlayerController.pause(isFromExplicitUserAction = true)
+    testCoroutineDispatchers.runCurrent()
+
+    assertThat(shadowMediaPlayer.isReallyPlaying).isFalse()
+  }
+
+  @Test
+  fun testController_withBackgroundMediaPlayer_seekTo_hasCorrectProgress() {
+    TestPlatformParameterModule.forceEnableBackgroundMediaPlayer(true)
+    setUpMediaReadyApplication()
+    arrangeMediaPlayer()
+
+    audioPlayerController.seekTo(500)
+    testCoroutineDispatchers.runCurrent()
+
+    assertThat(shadowMediaPlayer.currentPositionRaw).isEqualTo(500)
+  }
+
+  @Test
+  fun testController_withBackgroundMediaPlayer_releaseMediaPlayer_hasEndState() {
+    TestPlatformParameterModule.forceEnableBackgroundMediaPlayer(true)
+    setUpMediaReadyApplication()
+    arrangeMediaPlayer()
+
+    audioPlayerController.releaseMediaPlayer()
+    testCoroutineDispatchers.runCurrent()
+
+    assertThat(shadowMediaPlayer.state).isEqualTo(ShadowMediaPlayer.State.END)
+  }
+
+  @Test
   fun testController_releasePlayer_initializePlayer_capturesPendingState() {
     setUpMediaReadyApplication()
     audioPlayerController.initializeMediaPlayer()

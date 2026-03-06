@@ -6,13 +6,16 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.oppia.android.domain.oppialogger.OppiaLogger
 import org.oppia.android.domain.oppialogger.analytics.LearnerAnalyticsLogger
 import org.oppia.android.domain.oppialogger.exceptions.ExceptionsController
 import org.oppia.android.util.data.AsyncResult
+import org.oppia.android.util.platformparameter.EnableBackgroundMediaPlayer
+import org.oppia.android.util.platformparameter.PlatformParameterValue
 import org.oppia.android.util.threading.BackgroundDispatcher
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -21,19 +24,18 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.concurrent.withLock
 
-/**
- * Controller which provides audio playing capabilities.
- * [initializeMediaPlayer] should be used to download a specific audio track.
- * [releaseMediaPlayer] should be used to clean up the controller's resources.
- * See documentation for both to understand how to use them correctly.
- */
+/** Controller for playing and managing audio. */
 @Singleton
 class AudioPlayerController @Inject constructor(
   private val oppiaLogger: OppiaLogger,
   private val exceptionsController: ExceptionsController,
   private val learnerAnalyticsLogger: LearnerAnalyticsLogger,
-  @BackgroundDispatcher private val backgroundDispatcher: CoroutineDispatcher
+  @BackgroundDispatcher private val backgroundDispatcher: CoroutineDispatcher,
+  @EnableBackgroundMediaPlayer
+  private val enableBackgroundMediaPlayer: PlatformParameterValue<Boolean>
 ) {
+  private val backgroundScope = CoroutineScope(backgroundDispatcher + SupervisorJob())
+  private val mediaPlayerMutex = Mutex()
 
   inner class AudioMutableLiveData :
     MutableLiveData<AsyncResult<PlayProgress>>(AsyncResult.Pending()) {
@@ -113,13 +115,30 @@ class AudioPlayerController @Inject constructor(
    * Stops sending seek bar updates and put MediaPlayer in preparing state.
    */
   fun changeDataSource(url: String, contentId: String?, languageCode: String) {
-    audioLock.withLock {
-      prepared = false
-      currentContentId = contentId
-      currentLanguageCode = languageCode
-      stopUpdatingSeekBar()
-      mediaPlayer.reset()
-      prepareDataSource(url)
+    if (enableBackgroundMediaPlayer.value) {
+      audioLock.withLock {
+        prepared = false
+        currentContentId = contentId
+        currentLanguageCode = languageCode
+        stopUpdatingSeekBar()
+      }
+      backgroundScope.launch {
+        mediaPlayerMutex.withLock {
+          audioLock.withLock {
+            mediaPlayer.reset()
+            prepareDataSource(url)
+          }
+        }
+      }
+    } else {
+      audioLock.withLock {
+        prepared = false
+        currentContentId = contentId
+        currentLanguageCode = languageCode
+        stopUpdatingSeekBar()
+        mediaPlayer.reset()
+        prepareDataSource(url)
+      }
     }
   }
 
@@ -164,19 +183,34 @@ class AudioPlayerController @Inject constructor(
    * Controller must already have audio prepared.
    */
   fun play(isPlayingFromAutoPlay: Boolean, reloadingMainContent: Boolean) {
-    audioLock.withLock {
-      check(prepared) { "Media Player not in a prepared state" }
-      if (!mediaPlayer.isPlaying) {
-        mediaPlayer.start()
-        scheduleNextSeekBarUpdate()
-
-        // Log an auto play only if it's the one that initiates playing audio (since it more or less
-        // corresponds to manually clicking the 'play' button). Note this will not log any play
-        // events after the state completes (since there'll no longer be a state logger).
-        if (!isPlayingFromAutoPlay || !reloadingMainContent) {
-          val explorationLogger = learnerAnalyticsLogger.explorationAnalyticsLogger.value
-          val stateLogger = explorationLogger?.stateAnalyticsLogger?.value
-          stateLogger?.logPlayVoiceOver(currentContentId, currentLanguageCode)
+    if (enableBackgroundMediaPlayer.value) {
+      backgroundScope.launch {
+        mediaPlayerMutex.withLock {
+          audioLock.withLock {
+            check(prepared) { "Media Player not in a prepared state" }
+            if (!mediaPlayer.isPlaying) {
+              mediaPlayer.start()
+              scheduleNextSeekBarUpdate()
+              if (!isPlayingFromAutoPlay || !reloadingMainContent) {
+                val explorationLogger = learnerAnalyticsLogger.explorationAnalyticsLogger.value
+                val stateLogger = explorationLogger?.stateAnalyticsLogger?.value
+                stateLogger?.logPlayVoiceOver(currentContentId, currentLanguageCode)
+              }
+            }
+          }
+        }
+      }
+    } else {
+      audioLock.withLock {
+        check(prepared) { "Media Player not in a prepared state" }
+        if (!mediaPlayer.isPlaying) {
+          mediaPlayer.start()
+          scheduleNextSeekBarUpdate()
+          if (!isPlayingFromAutoPlay || !reloadingMainContent) {
+            val explorationLogger = learnerAnalyticsLogger.explorationAnalyticsLogger.value
+            val stateLogger = explorationLogger?.stateAnalyticsLogger?.value
+            stateLogger?.logPlayVoiceOver(currentContentId, currentLanguageCode)
+          }
         }
       }
     }
@@ -192,20 +226,43 @@ class AudioPlayerController @Inject constructor(
    *     closing the audio bar)
    */
   fun pause(isFromExplicitUserAction: Boolean) {
-    audioLock.withLock {
-      check(prepared) { "Media Player not in a prepared state" }
-      if (mediaPlayer.isPlaying) {
-        playProgress?.value =
-          AsyncResult.Success(
-            PlayProgress(PlayStatus.PAUSED, mediaPlayer.currentPosition, duration)
-          )
-        mediaPlayer.pause()
-        stopUpdatingSeekBar()
-
-        if (isFromExplicitUserAction) {
-          val explorationLogger = learnerAnalyticsLogger.explorationAnalyticsLogger.value
-          val stateLogger = explorationLogger?.stateAnalyticsLogger?.value
-          stateLogger?.logPauseVoiceOver(currentContentId, currentLanguageCode)
+    if (enableBackgroundMediaPlayer.value) {
+      backgroundScope.launch {
+        mediaPlayerMutex.withLock {
+          audioLock.withLock {
+            check(prepared) { "Media Player not in a prepared state" }
+            if (mediaPlayer.isPlaying) {
+              playProgress?.postValue(
+                AsyncResult.Success(
+                  PlayProgress(PlayStatus.PAUSED, mediaPlayer.currentPosition, duration)
+                )
+              )
+              mediaPlayer.pause()
+              stopUpdatingSeekBar()
+              if (isFromExplicitUserAction) {
+                val explorationLogger = learnerAnalyticsLogger.explorationAnalyticsLogger.value
+                val stateLogger = explorationLogger?.stateAnalyticsLogger?.value
+                stateLogger?.logPauseVoiceOver(currentContentId, currentLanguageCode)
+              }
+            }
+          }
+        }
+      }
+    } else {
+      audioLock.withLock {
+        check(prepared) { "Media Player not in a prepared state" }
+        if (mediaPlayer.isPlaying) {
+          playProgress?.value =
+            AsyncResult.Success(
+              PlayProgress(PlayStatus.PAUSED, mediaPlayer.currentPosition, duration)
+            )
+          mediaPlayer.pause()
+          stopUpdatingSeekBar()
+          if (isFromExplicitUserAction) {
+            val explorationLogger = learnerAnalyticsLogger.explorationAnalyticsLogger.value
+            val stateLogger = explorationLogger?.stateAnalyticsLogger?.value
+            stateLogger?.logPauseVoiceOver(currentContentId, currentLanguageCode)
+          }
         }
       }
     }
@@ -214,7 +271,7 @@ class AudioPlayerController @Inject constructor(
   private fun scheduleNextSeekBarUpdate() {
     audioLock.withLock {
       if (observerActive && prepared) {
-        nextUpdateJob = CoroutineScope(backgroundDispatcher).launch {
+        nextUpdateJob = backgroundScope.launch {
           updateSeekBar()
           delay(SEEKBAR_UPDATE_FREQUENCY)
           scheduleNextSeekBarUpdate()
@@ -250,15 +307,39 @@ class AudioPlayerController @Inject constructor(
    * MediaPlayer must already be initialized.
    */
   fun releaseMediaPlayer() {
-    audioLock.withLock {
-      if (!isReleased) {
-        check(mediaPlayerActive) { "Media player has not been previously initialized" }
-        mediaPlayerActive = false
-        isReleased = true
-        prepared = false
-        mediaPlayer.release()
-        stopUpdatingSeekBar()
-        playProgress = null
+    if (enableBackgroundMediaPlayer.value) {
+      val playerToRelease: MediaPlayer?
+      audioLock.withLock {
+        if (!isReleased) {
+          check(mediaPlayerActive) { "Media player has not been previously initialized" }
+          mediaPlayerActive = false
+          isReleased = true
+          prepared = false
+          playerToRelease = mediaPlayer
+          stopUpdatingSeekBar()
+          playProgress = null
+        } else {
+          playerToRelease = null
+        }
+      }
+      playerToRelease?.let { player ->
+        backgroundScope.launch {
+          mediaPlayerMutex.withLock {
+            player.release()
+          }
+        }
+      }
+    } else {
+      audioLock.withLock {
+        if (!isReleased) {
+          check(mediaPlayerActive) { "Media player has not been previously initialized" }
+          mediaPlayerActive = false
+          isReleased = true
+          prepared = false
+          mediaPlayer.release()
+          stopUpdatingSeekBar()
+          playProgress = null
+        }
       }
     }
   }
@@ -268,9 +349,20 @@ class AudioPlayerController @Inject constructor(
    * Controller must already have audio prepared.
    */
   fun seekTo(position: Int) {
-    audioLock.withLock {
-      check(prepared) { "Media Player not in a prepared state" }
-      mediaPlayer.seekTo(position)
+    if (enableBackgroundMediaPlayer.value) {
+      backgroundScope.launch {
+        mediaPlayerMutex.withLock {
+          audioLock.withLock {
+            check(prepared) { "Media Player not in a prepared state" }
+            mediaPlayer.seekTo(position)
+          }
+        }
+      }
+    } else {
+      audioLock.withLock {
+        check(prepared) { "Media Player not in a prepared state" }
+        mediaPlayer.seekTo(position)
+      }
     }
   }
 

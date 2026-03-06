@@ -7,6 +7,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import org.oppia.android.app.model.FeatureFlagId.APP_AND_OS_DEPRECATION
+import org.oppia.android.app.model.FeatureFlagId.BACKGROUND_MEDIA_PLAYER
 import org.oppia.android.app.model.FeatureFlagId.DOWNLOADS_SUPPORT
 import org.oppia.android.app.model.FeatureFlagId.EDIT_ACCOUNTS_OPTIONS_UI
 import org.oppia.android.app.model.FeatureFlagId.FAST_LANGUAGE_SWITCHING_IN_LESSON
@@ -148,6 +149,10 @@ class TestPlatformParameterModule {
 
     fun forceEnableTopicPracticeTab(value: Boolean) {
       TestPlatformParameterConfigRetriever.setFlagOverride(TOPIC_PRACTICE_TAB, value)
+    }
+
+    fun forceEnableBackgroundMediaPlayer(value: Boolean) {
+      TestPlatformParameterConfigRetriever.setFlagOverride(BACKGROUND_MEDIA_PLAYER, value)
     }
 
     fun reset() {
