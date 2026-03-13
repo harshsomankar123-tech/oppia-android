@@ -68,17 +68,27 @@ class CommandExecutorImpl(
 
   private fun InputStream.readAllLinesAsync(): Deferred<List<String>> {
     return CoroutineScope(scriptBgDispatcher).async {
-      mutableListOf<String>().also { lines -> convertToAsyncLineFlow().collect { lines += it } }
+      this@readAllLinesAsync.collectAllLines()
     }
   }
 
+  /**
+   * Collects all lines from this [InputStream] into a list.
+   *
+   * This is extracted as a separate function so that JaCoCo can correctly instrument the closing
+   * brace of [readAllLinesAsync]'s async lambda (see #5523).
+   */
+  private suspend fun InputStream.collectAllLines(): List<String> {
+    return mutableListOf<String>().also { lines -> convertToAsyncLineFlow().collect { lines += it } }
+  }
+
   private fun InputStream.convertToAsyncLineFlow(): Flow<String> {
-    return Channel<String>().also { inputChannel ->
-      @Suppress("DeferredResultUnused") // Can be ignored since the channel result is watched.
-      CoroutineScope(scriptBgDispatcher).async {
-        this@convertToAsyncLineFlow.writeTo(inputChannel)
-      }
-    }.consumeAsFlow()
+    val inputChannel = Channel<String>()
+    @Suppress("DeferredResultUnused") // Can be ignored since the channel result is watched.
+    CoroutineScope(scriptBgDispatcher).async {
+      this@convertToAsyncLineFlow.writeTo(inputChannel)
+    }
+    return inputChannel.consumeAsFlow()
   }
 
   private suspend fun InputStream.writeTo(channel: Channel<String>) {

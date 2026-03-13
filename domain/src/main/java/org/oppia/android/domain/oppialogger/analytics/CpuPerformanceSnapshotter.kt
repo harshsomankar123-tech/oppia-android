@@ -6,6 +6,7 @@ import kotlinx.coroutines.ObsoleteCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.actor
+import kotlinx.coroutines.channels.ActorScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.oppia.android.app.model.ScreenName
@@ -73,53 +74,64 @@ class CpuPerformanceSnapshotter(
 
   @OptIn(ObsoleteCoroutinesApi::class)
   private fun createCommandQueueActor(): SendChannel<CommandMessage> {
-    var previousSnapshot = performanceMetricsAssessor.computeCpuSnapshotAtCurrentTime()
-    var switchIconificationCount = 0
     val coroutineScope = CoroutineScope(backgroundCoroutineDispatcher)
     return coroutineScope.actor(capacity = Channel.UNLIMITED) {
-      for (message in channel) {
-        when (message) {
-          is CommandMessage.SwitchIconification -> {
-            ++switchIconificationCount
-            if (currentIconification != UNINITIALIZED) {
-              // Since there's a switch in the current iconification of the app, we'd cut short the
-              // existing delay and log the current CPU usage relative to the previously logged one
-              // without this explicit log command.
-              performanceMetricsAssessor.getRelativeCpuUsage(
-                previousSnapshot,
-                performanceMetricsAssessor.computeCpuSnapshotAtCurrentTime()
-              )?.let { relativeCpuUsage ->
-                sendLogSnapshotDiffCommand(relativeCpuUsage, currentIconification)
-              }
+      processCommandMessages()
+    }
+  }
+
+  /**
+   * Processes incoming [CommandMessage]s from the actor's channel.
+   *
+   * This is extracted as a separate function so that JaCoCo can correctly instrument the closing
+   * brace of [createCommandQueueActor]'s actor lambda (see #5523).
+   */
+  @OptIn(ObsoleteCoroutinesApi::class)
+  private suspend fun ActorScope<CommandMessage>.processCommandMessages() {
+    var previousSnapshot = performanceMetricsAssessor.computeCpuSnapshotAtCurrentTime()
+    var switchIconificationCount = 0
+    for (message in channel) {
+      when (message) {
+        is CommandMessage.SwitchIconification -> {
+          ++switchIconificationCount
+          if (currentIconification != UNINITIALIZED) {
+            // Since there's a switch in the current iconification of the app, we'd cut short the
+            // existing delay and log the current CPU usage relative to the previously logged one
+            // without this explicit log command.
+            performanceMetricsAssessor.getRelativeCpuUsage(
+              previousSnapshot,
+              performanceMetricsAssessor.computeCpuSnapshotAtCurrentTime()
+            )?.let { relativeCpuUsage ->
+              sendLogSnapshotDiffCommand(relativeCpuUsage, currentIconification)
             }
-            currentIconification = message.newIconification
-            previousSnapshot = performanceMetricsAssessor.computeCpuSnapshotAtCurrentTime()
-            // Schedule CPU usage logging for the new app iconification.
+          }
+          currentIconification = message.newIconification
+          previousSnapshot = performanceMetricsAssessor.computeCpuSnapshotAtCurrentTime()
+          // Schedule CPU usage logging for the new app iconification.
+          sendScheduleTakeSnapshotCommand(currentIconification, switchIconificationCount)
+        }
+        is CommandMessage.ScheduleTakeSnapshot -> scheduleTakeSnapshot(
+          message.currentIconification,
+          switchIconificationCount
+        )
+        is CommandMessage.TakeSnapshot -> {
+          if (message.switchId == switchIconificationCount) {
+            val newSnapshot = performanceMetricsAssessor.computeCpuSnapshotAtCurrentTime()
+            performanceMetricsAssessor.getRelativeCpuUsage(
+              previousSnapshot,
+              performanceMetricsAssessor.computeCpuSnapshotAtCurrentTime()
+            )?.let { relativeCpuUsage ->
+              sendLogSnapshotDiffCommand(relativeCpuUsage, currentIconification)
+            }
+            previousSnapshot = newSnapshot
             sendScheduleTakeSnapshotCommand(currentIconification, switchIconificationCount)
           }
-          is CommandMessage.ScheduleTakeSnapshot -> scheduleTakeSnapshot(
-            message.currentIconification,
-            switchIconificationCount
+        }
+        is CommandMessage.LogSnapshotDiff -> {
+          performanceMetricsLogger.logCpuUsage(
+            message.screenName,
+            message.relativeCpuUsage
           )
-          is CommandMessage.TakeSnapshot -> {
-            if (message.switchId == switchIconificationCount) {
-              val newSnapshot = performanceMetricsAssessor.computeCpuSnapshotAtCurrentTime()
-              performanceMetricsAssessor.getRelativeCpuUsage(
-                previousSnapshot,
-                performanceMetricsAssessor.computeCpuSnapshotAtCurrentTime()
-              )?.let { relativeCpuUsage ->
-                sendLogSnapshotDiffCommand(relativeCpuUsage, currentIconification)
-              }
-              previousSnapshot = newSnapshot
-              sendScheduleTakeSnapshotCommand(currentIconification, switchIconificationCount)
-            }
-          }
-          is CommandMessage.LogSnapshotDiff -> {
-            performanceMetricsLogger.logCpuUsage(
-              message.screenName,
-              message.relativeCpuUsage
-            )
-          }
         }
       }
     }

@@ -72,6 +72,21 @@ class TodoOpenCheck(
 
     val allTodos = TodoCollector.collectTodos(repoPath = "${repoRoot.path}/")
 
+    performTodoValidation(allTodos, openIssueList, todoExemptionList, regenerateFile)
+  }
+
+  /**
+   * Performs the core TODO validation logic.
+   *
+   * This is extracted as a separate function so that JaCoCo can correctly instrument the closing
+   * brace of [runTodoOpenCheck] (see #5523).
+   */
+  private fun performTodoValidation(
+    allTodos: List<Todo>,
+    openIssueList: List<GitHubIssue>,
+    todoExemptionList: List<TodoOpenExemption>,
+    regenerateFile: Boolean
+  ) {
     val poorlyFormattedTodos = TodoCollector.collectPoorlyFormattedTodos(allTodos)
 
     val correctlyFormattedTodos = TodoCollector.collectCorrectlyFormattedTodos(
